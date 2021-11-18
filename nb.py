@@ -40,12 +40,15 @@ def accuracy(preds, y):
 
 
 def wordlist(file):
+
     train_data_set = load_data(file)
     print("[" + str(datetime.now().time())[:-4] + "] Generating features")
+
     wordlist_features = []
     n_meanings = set()
     text = list()
     text += ' '
+
     for index in range(len(train_data_set.token)):
         is_name = 1 if \
             not train_data_set.sentence[index].index(train_data_set.token[index]) == 0 \
@@ -53,28 +56,28 @@ def wordlist(file):
             and train_data_set.token[index][0].isupper() \
             and not train_data_set.token[index].lower() in DALE_CHALL \
             else 0
-        text[0] += train_data_set.sentence[index] + " "
 
+        text[0] += train_data_set.sentence[index] + " "
         word = train_data_set.token[index]
 
         wordlist_features.append([float(len(word)),
                                   int((lambda _word: _word.lower() in DALE_CHALL or _word in DALE_CHALL)(word)),        #check in dale wordlist
-                                  # int((lambda _word: _word[0].isupper())(word)),                                        #check capitalised
+                                  int((lambda _word: _word[0].isupper())(word)),                                        #check capitalised
                                   float(nr_syllables(word)),                                                            #check nr_syllables
-                                  # int((lambda _word: _word.isupper())(word)),                                           #check if whole word is caps
-                                  int((lambda _word: any(char.isdigit() for char in _word))(word)),                           #check if word contains/is number
-                                  int((lambda _word: not bool(re.match("^[a-zA-Z_]*$", _word)))(word)),                 #check if word contains special chars
+                                  # int((lambda _word: _word.isupper())(word)),                                         #check if whole word is caps
+                                  int((lambda _word: any(char.isdigit() for char in _word))(word)),                     #check if word contains/is number
+                                  int((lambda _word: not bool(re.match("^[a-zA-Z0-9_]*$", _word)))(word)),              #check if word contains special chars
                                   is_name,                                                                              #check if word is name (inside sentence+capitalised)
-                                  # count_vowels(word),                                                                    #count no vowels
+                                  # count_vowels(word),                                                                 #count no vowels
                                   len(wordnet.synsets(word)),                                                           #count how many meanings the word has
                                   len(train_data_set.corpus[index])                                                     #encoded corpus of word
                                   ])
 
-        n_meanings.add(x for x in wordnet.synsets(train_data_set.token[index]))                                         # create unique meanings
+        n_meanings.add(x for x in wordnet.synsets(word))                                                                # create unique meanings
 
     n_unq_words = len(set(text[0]))
     n_words = len(text[0].split())
-    n_unq_meanings = len(set(n_meanings))
+    n_unq_meanings = len(n_meanings)
     train_data_token_list = list(train_data_set.token)
     print(n_words, "words", n_unq_words, "unique")
     print(n_unq_words / n_words, "average frequency per word")
@@ -83,8 +86,8 @@ def wordlist(file):
         wordlist_features[index].append(train_data_token_list.count(train_data_set.token[index]))                       #calculate self_frequency
         wordlist_features[index].append(wordlist_features[index][len(wordlist_features[index])-3]/ n_unq_meanings)      #avg meanings per word??
         freq = float(text[0].count(train_data_set.token[index]) / n_words)                                              #global frequency of word
-        wordlist_features[index].append(freq)
-        wordlist_features[index].append((lambda x: 1 if x >= n_unq_words / n_words else 0)(freq))                       #determine if the word is frequent 0.0007476 avg on train_data
+        # wordlist_features[index].append(freq)
+        wordlist_features[index].append((lambda x: 1 if x >= float(n_unq_words / n_words) else 0)(freq))                #determine if the word is frequent 0.0007476 avg on train_data
 
     y_train_set = []
     try:                                                                                                                #test cases have no y column

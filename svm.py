@@ -7,6 +7,7 @@ import nltk
 import pyphen
 from nltk.corpus import wordnet
 import pyphen
+from sklearn.model_selection import KFold
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn import svm
 from sklearn.svm import SVC
@@ -15,7 +16,7 @@ from sklearn.metrics import confusion_matrix
 import math
 from data.dale_chall import DALE_CHALL
 from nltk.tokenize import word_tokenize
-
+from datetime import datetime
 from sklearn.naive_bayes import GaussianNB
 
 
@@ -47,70 +48,114 @@ def accuracy(preds, y):
     return ((cfm[0][0] / (cfm[0][0] + cfm[0][1])) + (cfm[1][1] / (cfm[1][1] + cfm[1][0]))) / 2
 
 def wordlist(file):
+
     train_data_set = load_data(file)
+    print("[" + str(datetime.now().time())[:-4] + "] Generating features")
+
     wordlist_features = []
     n_meanings = set()
-    for index in range(len(train_data_set.token)):
+    text = list()
+    text += ' '
 
+    for index in range(len(train_data_set.token)):
         is_name = 1 if \
             not train_data_set.sentence[index].index(train_data_set.token[index]) == 0 \
             and not train_data_set.token[index].isupper() \
             and train_data_set.token[index][0].isupper() \
+            and not train_data_set.token[index].lower() in DALE_CHALL \
             else 0
 
-        wordlist_features.append([
-                                    len(train_data_set.token[index]),
-                                    int((lambda _word:  (train_data_set.token[index].lower() in DALE_CHALL)
-                                                        or (train_data_set.token[index] in DALE_CHALL))
-                                                        (train_data_set.token[index])),
-                                    int((lambda _word: _word[0].isupper())(train_data_set.token[index])),
-                                    float(nr_syllables(train_data_set.token[index])),
-                                    int((lambda _word: _word.isupper())(train_data_set.token[index])),
-                                    int((lambda _word: any(i.isdigit() for i in _word))(train_data_set.token[index])),
-                                    # int((lambda _word: not bool(re.match("^[a-zA-Z0-9_]*$", _word)))(
-                                    #   train_data_set.token[index])),
-                                    # is_name,
-                                    # count_vowels(train_data_set.token[index]),
-                                    len(wordnet.synsets(train_data_set.token[index])),
-                                    len(train_data_set.corpus[index])])
+        text[0] += train_data_set.sentence[index] + " "
+        word = train_data_set.token[index]
 
-        n_meanings.add(x for x in wordnet.synsets(train_data_set.token[index]))
-    #
-    for index in range(len(train_data_set.token)):
-        wordlist_features[index].append(list(train_data_set.token).count(train_data_set.token[index]))                  # self_frequency
-    #     wordlist_features[index].append(len(wordnet.synsets(train_data_set.token[index])) / len(n_meanings))            #?? n_meanings / len(wordlist)
-    #     wordlist_features[index].append(float(list(train_data_set.token).count(train_data_set.token[index]) / len(              #frequency in text
-    #         train_data_set.token)))
-        wordlist_features[index].append((lambda x: 1 if x > 0.004 else 0)(wordlist_features[index][len(wordlist_features[index])-1]))            #is_frequent
+        wordlist_features.append([
+                                  float(len(word)),
+                                  int((lambda _word: _word.lower() in DALE_CHALL or _word in DALE_CHALL)(word)),        #check in dale wordlist
+                                  int((lambda _word: _word[0].isupper())(word)),                                        #check capitalised
+                                  # float(nr_syllables(word)),                                                            #check nr_syllables
+                                  # int((lambda _word: _word.isupper())(word)),                                           #check if whole word is caps
+                                  int((lambda _word: any(char.isdigit() for char in _word))(word)),                     #check if word contains/is number
+                                  int((lambda _word: not bool(re.match("^[a-zA-Z0-9_]*$", _word)))(word)),              #check if word contains special chars
+                                  is_name,                                                                              #check if word is name (inside sentence+capitalised)
+                                  # count_vowels(word),                                                                   #count no vowels
+                                  # len(wordnet.synsets(word)),                                                           #count how many meanings the word has
+                                  len(train_data_set.corpus[index])                                                     #encoded corpus of word
+                                  ])
+
+        n_meanings.add(x for x in wordnet.synsets(word))                                                                # create unique meanings
+
+    n_unq_words = len(set(text[0]))
+    n_words = len(text[0].split())
+    n_unq_meanings = len(n_meanings)
+    train_data_token_list = list(train_data_set.token)
+    print(n_words, "words", n_unq_words, "unique")
+    print(n_unq_words / n_words, "average frequency per word")
+
+    # for index in range(len(train_data_set.token)):
+    #     wordlist_features[index].append(train_data_token_list.count(train_data_set.token[index]))                       #calculate self_frequency
+    #     wordlist_features[index].append(wordlist_features[index][len(wordlist_features[index])-3]/ n_unq_meanings)      #avg meanings per word??
+        # freq = float(text[0].count(train_data_set.token[index]) / n_words)                                              #global frequency of word
+        # wordlist_features[index].append(freq)
+        # wordlist_features[index].append((lambda x: 1 if x >= float(n_unq_words / n_words) else 0)(freq))                #determine if the word is frequent 0.0007476 avg on train_data
 
     y_train_set = []
-    try:
+    try:                                                                                                                #test cases have no y column
         for cpx in train_data_set.complex:
             y_train_set.append(cpx)
-    except Exception as e:
+    except AttributeError as e:
         print(e)
         pass
 
     return wordlist_features, y_train_set, train_data_set.index
 
-
+print("[" + str(datetime.now().time())[:-4] + "] Loading train data")
 train_data, y_train, train_index = wordlist(TRAIN_FILE)
-test_data, y_test, test_index =  wordlist(TEST_FILE)
+print("[" + str(datetime.now().time())[:-4] + "] Loading test data")
+test_data, y_test, test_index = wordlist(TEST_FILE)
 
+ac = []
 
-svc = SVC(kernel='rbf')
+kf = KFold(n_splits=10, random_state=None, shuffle=True)
+svc = SVC(kernel='linear')
+
+print("[" + str(datetime.now().time())[:-4] + "] Starting KFold")
+for xtrain_index, xtest_index in kf.split(np.array(train_data)):
+    X_train = (np.array(train_data))[xtrain_index]
+    X_test = (np.array(train_data))[xtest_index]
+    xy_train = (np.array(y_train))[xtrain_index]
+    xy_test = (np.array(y_train))[xtest_index]
+    svc.fit(train_data, y_train)
+    xy_pred = svc.predict(X_test)
+    ac.append(accuracy(xy_test, xy_pred))
+
+av_ac = sum(ac) / 10
+print("KFold accuracy:", av_ac)
+
+print("[" + str(datetime.now().time())[:-4] + "] Starting train test")
 svc.fit(train_data, y_train)
 
-preds = svc.predict(test_data)
+print("[" + str(datetime.now().time())[:-4] + "] Predicting over train data")
+y_pred = svc.predict(train_data)
 
+
+print("Test accuracy:", accuracy(y_train, y_pred))
+
+print("[" + str(datetime.now().time())[:-4] + "] Starting main test")
+svc.fit(train_data, y_train)
+print("[" + str(datetime.now().time())[:-4] + "] Predicting test data")
+y_pred =  svc.predict(test_data)
+
+
+#for testing on sliced train data
 try:
-    print(accuracy(y_test, preds))
+    print(accuracy(y_test, y_pred))
 except ValueError:
     pass
 
-
+print("[" + str(datetime.now().time())[:-4] + "] Writing to csv")
 df = pd.DataFrame()
 df['id'] = test_index + 7663
-df['complex'] = preds
+df['complex'] = y_pred
 
 df.to_csv(SUBMISSION_FILE, index=False)
+print("[" + str(datetime.now().time())[:-4] + "] Finished successfully")

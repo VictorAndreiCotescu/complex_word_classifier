@@ -7,6 +7,7 @@ import pyphen
 from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import KFold
 from data.dale_chall import DALE_CHALL
+from data.names import NAMES
 from sklearn.naive_bayes import GaussianNB
 from datetime import datetime
 
@@ -38,6 +39,21 @@ def accuracy(preds, y):
     cfm = confusion_matrix(y, preds)
     return ((cfm[0][0] / (cfm[0][0] + cfm[1][0])) + (cfm[1][1] / (cfm[1][1] + cfm[0][1]))) / 2
 
+def get_part(word):
+    part = 0
+    try:
+        part = wordnet.synsets(word)[0].pos()
+    except:
+        pass
+    return 1 if part == 'n' else 2 if part == 'v' else 3 if part == 'a' else 4 if part == 'r' else 0
+
+def get_hyp(word):
+    counter = 0
+    for ss in wordnet.synsets(word):
+        if ss.hypernyms():
+            counter += 1
+    return counter
+
 
 def wordlist(file):
 
@@ -50,12 +66,7 @@ def wordlist(file):
     text += ' '
 
     for index in range(len(train_data_set.token)):
-        is_name = 1 if \
-            not train_data_set.sentence[index].index(train_data_set.token[index]) == 0 \
-            and not train_data_set.token[index].isupper() \
-            and train_data_set.token[index][0].isupper() \
-            and not train_data_set.token[index].lower() in DALE_CHALL \
-            else 0
+        is_name = 1 if train_data_set.token[index].upper() in NAMES else 0
 
         text[0] += train_data_set.sentence[index] + " "
         word = train_data_set.token[index]
@@ -63,13 +74,14 @@ def wordlist(file):
         wordlist_features.append([float(len(word)),
                                   int((lambda _word: _word.lower() in DALE_CHALL or _word in DALE_CHALL)(word)),        #check in dale wordlist
                                   int((lambda _word: _word[0].isupper())(word)),                                        #check capitalised
-                                  float(nr_syllables(word)),                                                            #check nr_syllables
-                                  # int((lambda _word: _word.isupper())(word)),                                         #check if whole word is caps
+                                  # float(nr_syllables(word)),                                                          #check nr_syllables
+                                  int((lambda _word: _word.isupper())(word)),
                                   int((lambda _word: any(char.isdigit() for char in _word))(word)),                     #check if word contains/is number
-                                  int((lambda _word: not bool(re.match("^[a-zA-Z0-9_]*$", _word)))(word)),              #check if word contains special chars
+                                  int((lambda _word: not bool(re.match("^[a-zA-Z_]*$", _word)))(word)),                 #check if word contains special chars
                                   is_name,                                                                              #check if word is name (inside sentence+capitalised)
-                                  # count_vowels(word),                                                                 #count no vowels
+                                  # count_vowels(word),                                                                   #count no vowels
                                   len(wordnet.synsets(word)),                                                           #count how many meanings the word has
+                                  get_hyp(word),
                                   len(train_data_set.corpus[index])                                                     #encoded corpus of word
                                   ])
 
@@ -84,10 +96,18 @@ def wordlist(file):
 
     for index in range(len(train_data_set.token)):
         wordlist_features[index].append(train_data_token_list.count(train_data_set.token[index]))                       #calculate self_frequency
-        wordlist_features[index].append(wordlist_features[index][len(wordlist_features[index])-3]/ n_unq_meanings)      #avg meanings per word??
+        wordlist_features[index].append(wordlist_features[index][len(wordlist_features[index])-4]/ n_unq_meanings)      #avg meanings per word??
         freq = float(text[0].count(train_data_set.token[index]) / n_words)                                              #global frequency of word
         # wordlist_features[index].append(freq)
         wordlist_features[index].append((lambda x: 1 if x >= float(n_unq_words / n_words) else 0)(freq))                #determine if the word is frequent 0.0007476 avg on train_data
+
+    #data norm
+    normalized_f = list()
+    for f_set in wordlist_features:
+        aux_list = list()
+        for f_val in f_set:
+            aux_list.append((f_val-min(f_set))/(max(f_set)-min(f_set)))
+        normalized_f.append(aux_list)
 
     y_train_set = []
     try:                                                                                                                #test cases have no y column
@@ -97,6 +117,7 @@ def wordlist(file):
         print(e)
         pass
 
+    # print(list(normalized_f))
     return wordlist_features, y_train_set, train_data_set.index
 
 print("[" + str(datetime.now().time())[:-4] + "] Loading train data")

@@ -1,4 +1,5 @@
 import re
+import time
 
 import pandas as pd
 import numpy as np
@@ -7,11 +8,13 @@ import nltk
 import pyphen
 from nltk.corpus import wordnet
 import pyphen
+from sklearn.model_selection import KFold
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn import svm
 from sklearn.svm import SVC
 from sklearn import metrics
 from sklearn.metrics import confusion_matrix
+from datetime import datetime
 
 from data.dale_chall import DALE_CHALL
 from nltk.tokenize import word_tokenize
@@ -44,7 +47,9 @@ def load_data(file):
 
 def accuracy(preds, y):
     cfm = confusion_matrix(y, preds)
-    return ((cfm[0][0] / (cfm[0][0] + cfm[0][1])) + (cfm[1][1] / (cfm[1][1] + cfm[1][0]))) / 2
+    print(cfm)
+    return ((cfm[0][0] / (cfm[0][0] + cfm[1][0])) + (cfm[1][1] / (cfm[1][1] + cfm[0][1]))) / 2
+
 
 def wordlist(file):
     train_data_set = load_data(file)
@@ -91,9 +96,32 @@ def wordlist(file):
 
     return wordlist_features, y_train_set, train_data_set.index
 
-
+t0 = time.time()
 train_data, y_train, train_index = wordlist(TRAIN_FILE)
 test_data, y_test, test_index =  wordlist(TEST_FILE)
+
+
+kf = KFold(n_splits=10, random_state=None, shuffle=True)
+gnb = GaussianNB()
+
+ac = list()
+
+print("[" + str(datetime.now().time())[:-4] + "] Starting KFold")
+for xtrain_index, xtest_index in kf.split(np.array(train_data)):
+    X_train = (np.array(train_data))[xtrain_index]
+    X_test = (np.array(train_data))[xtest_index]
+    xy_train = (np.array(y_train))[xtrain_index]
+    xy_test = (np.array(y_train))[xtest_index]
+    gnb.fit(X_train, xy_train)
+    xy_pred = gnb.predict(X_test)
+    ac.append(accuracy(xy_test, xy_pred))
+
+t1 = time.time()
+total = t1-t0
+print("timp", t1-t0)
+
+av_ac = sum(ac) / 10
+print("KFold accuracy:", av_ac)
 
 model = KNeighborsClassifier(n_neighbors=4)
 model.fit(train_data, y_train)
